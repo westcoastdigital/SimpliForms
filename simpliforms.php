@@ -3,7 +3,7 @@
  * Plugin Name: Simpli Forms
  * Plugin URI:  https://simpliweb.com.au
  * Description: Drop-in HTML form handler for WordPress. Logging, email templates, spam protection — zero backend form building required.
- * Version:     1.0.0
+ * Version:     1.0.2
  * Author:      SimpliWeb
  * License:     GPL-2.0+
  *
@@ -13,26 +13,33 @@
  *       require_once get_template_directory() . '/inc/simpliforms.php';
  *
  * 2. Create a plain HTML file with your form. No special markup needed.
- *       Your form just needs a submit button — everything else is injected.
+ *       Every input/select/textarea must have a name attribute — everything else is injected.
  *
- * 3. In your template, instantiate and render:
+ * 3. Register the form inside an init hook in functions.php.
+ *       IMPORTANT: Do not instantiate SimpliForm in a page template. WordPress AJAX
+ *       requests never render templates, so the form won't be registered when a
+ *       submission comes in and every submit will fail.
  *
- *       $form = new SimpliForm( 'contact', [
- *           'template' => get_template_directory() . '/forms/contact.html',
- *           'email'    => [
- *               'to'             => 'hello@example.com',
- *               'subject'        => 'New enquiry from the website',
- *               'template'       => get_template_directory() . '/forms/emails/contact-notification.php',
- *               'reply_to_field' => 'email',   // name attr of the email input
- *           ],
- *           'auto_response' => [
- *               'enabled'   => true,
- *               'to_field'  => 'email',
- *               'subject'   => 'Thanks for getting in touch!',
- *               'template'  => get_template_directory() . '/forms/emails/contact-auto-response.php',
- *           ],
- *       ] );
- *       echo $form->render();
+ *       add_action( 'init', function () {
+ *           $GLOBALS['simpliforms']['contact'] = new SimpliForm( 'contact', [
+ *               'template' => get_template_directory() . '/forms/contact.html',
+ *               'email'    => [
+ *                   'to'             => 'hello@example.com',
+ *                   'subject'        => 'New enquiry from {{name}}',
+ *                   'template'       => get_template_directory() . '/forms/emails/contact-notification.php',
+ *                   'reply_to_field' => 'email',
+ *               ],
+ *               'auto_response' => [
+ *                   'enabled'  => true,
+ *                   'to_field' => 'email',
+ *                   'subject'  => 'Thanks for getting in touch!',
+ *                   'template' => get_template_directory() . '/forms/emails/contact-auto-response.php',
+ *               ],
+ *           ] );
+ *       } );
+ *
+ * 4. Render in your page template:
+ *       echo $GLOBALS['simpliforms']['contact']->render();
  *
  * ─── EMAIL TEMPLATES ────────────────────────────────────────────────────────
  *
@@ -83,6 +90,26 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+// ============================================
+// GitHub Auto-Updater Integration
+// ============================================
+require_once SIMPLI_DEBUG_PATH . 'github-updater.php';
+
+if (class_exists('SimpliWeb_GitHub_Updater')) {
+    $updater = new SimpliWeb_GitHub_Updater(__FILE__);
+    $updater->set_username('westcoastdigital');
+    $updater->set_repository('SimpliForms');
+    
+    // For private repos, uncomment and add your token:
+    // if (defined('GITHUB_ACCESS_TOKEN')) {
+    //     $updater->authorize(GITHUB_ACCESS_TOKEN);
+    // }
+    
+    $updater->initialize();
+}
+// ============================================
+
 
 // ─── Database Layer ───────────────────────────────────────────────────────────
 
@@ -483,16 +510,19 @@ class SimpliForm {
 	}
 
 	/**
-	 * Build email body from a PHP template file, or fall back to a clean default table.
+	 * Build email body from a PHP template file, inline HTML (WYSIWYG), or fall back to a clean default table.
 	 *
 	 * Inside your PHP template you have access to:
-	 *   $fields     — full associative array of submitted values
-	 *   $form_id    — the form's slug
-	 *   $form_label — prettified form label
+	 *   $fields      — full associative array of submitted values
+	 *   $form_id     — the form's slug
+	 *   $form_label  — prettified form label
 	 *   Individual field variables are extracted, e.g. echo $name; echo $email;
+	 *
+	 * Inline HTML (stored by the ACF field WYSIWYG editor) supports {{token}} replacement.
 	 */
 	private function build_email( string $template_path, array $fields, string $type ): string {
 
+		// ── PHP file template ───────────────────────────────────────────────────────
 		if ( $template_path && file_exists( $template_path ) ) {
 			ob_start();
 			$form_id    = $this->id;
@@ -503,6 +533,14 @@ class SimpliForm {
 			$form_fields = $fields;
 			include $template_path;
 			return ob_get_clean();
+		}
+
+		// ── Inline HTML from ACF WYSIWYG editor ────────────────────────────────
+		$cfg_key     = $type === 'notification' ? 'email' : 'auto_response';
+		$inline_html = $this->config[ $cfg_key ]['inline_html'] ?? '';
+
+		if ( $inline_html ) {
+			return $this->replace_tokens( $inline_html, $fields );
 		}
 
 		// ── Default fallback email ────────────────────────────────────────────
@@ -986,3 +1024,13 @@ function simpliforms_frontend_js(): string {
 })();
 JS;
 }
+
+// Only load if ACF or ACF Pro is active
+if ( class_exists( 'ACF' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'acf-field.php';
+}
+
+add_action( 'init', function () {
+    if ( ! class_exists( 'ACF' ) ) return;
+    simpliforms_acf_autoregister();
+} );
