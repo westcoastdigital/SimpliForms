@@ -3,7 +3,7 @@
  * Plugin Name: Simpli Forms
  * Plugin URI:  https://simpliweb.com.au
  * Description: Drop-in HTML form handler for WordPress. Logging, email templates, spam protection — zero backend form building required.
- * Version:     1.0.2
+ * Version:     1.0.3
  * Author:      SimpliWeb
  * License:     GPL-2.0+
  *
@@ -94,7 +94,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // ============================================
 // GitHub Auto-Updater Integration
 // ============================================
-require_once SIMPLI_DEBUG_PATH . 'github-updater.php';
+require_once plugin_dir_path(__FILE__) . 'github-updater.php';
 
 if (class_exists('SimpliWeb_GitHub_Updater')) {
     $updater = new SimpliWeb_GitHub_Updater(__FILE__);

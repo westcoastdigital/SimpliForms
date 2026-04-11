@@ -513,6 +513,9 @@ The table is created or updated via `dbDelta` on plugin activation, and re-check
 
 ## Version History
 
+### 1.0.3
+- **Fix:** — Errant definition broke the updater
+
 ### 1.0.2
 - **New:** `simpliforms-acf.php` — ACF field type for full backend configuration of forms, email settings, and email templates (including a WYSIWYG visual editor)
 - **New:** `simpliforms_register_from_acf()` — converts an ACF field value into a registered `SimpliForm` instance
