@@ -15,10 +15,12 @@ Built for use alongside Gravity Forms: use Gravity Forms for complex, data-drive
 - **Auto-response emails** — sent to the submitter, fully templated
 - **`{{token}}` replacement** in subject lines and WYSIWYG email bodies
 - **Submission logging** — every submission stored in a custom DB table with all fields as JSON
-- **WordPress admin UI** — tabbed by form, unread badge, bulk delete, paginated list, single detail view
+- **WordPress admin UI** — tabbed by form, unread badge, bulk actions, paginated list, single detail view
 - **ACF field type** — configure forms entirely from the WordPress backend (requires ACF or ACF Pro)
 - **Custom validation** — `before_submit` callback returning `true` or `WP_Error`
 - **Post-submit hook** — `after_submit` callback for CRM integrations, CPT creation, etc.
+- **WordPress hooks & filters** — full extensibility for third-party integrations
+- **Translatable** — all strings wrapped with `__()`, text domain `simpliforms`
 - **Custom JS events** — `simpliforms:success` and `simpliforms:error` on the wrapper element
 - **Works as a plugin or theme include** — no difference in functionality
 
@@ -32,12 +34,19 @@ Built for use alongside Gravity Forms: use Gravity Forms for complex, data-drive
 
 ---
 
-## Files
+## File Structure
 
-| File | Description |
-|---|---|
-| `simpliforms.php` | Core plugin — form handling, DB, admin UI |
-| `simpliforms-acf.php` | ACF field type — optional, requires ACF or ACF Pro |
+```
+simpliforms/
+├── simpliforms.php          # Plugin header, constants, bootstrap
+├── github-updater.php       # GitHub auto-updater
+├── acf-field.php            # ACF field type (optional, requires ACF or ACF Pro)
+├── includes/
+│   ├── class-db.php         # SimpliForm_DB — database layer
+│   ├── class-form.php       # SimpliForm — form registration, rendering, processing
+│   └── class-admin.php      # SimpliForm_Admin — WordPress admin UI
+└── languages/               # Translation .po/.mo files go here
+```
 
 ---
 
@@ -45,7 +54,7 @@ Built for use alongside Gravity Forms: use Gravity Forms for complex, data-drive
 
 ### As a plugin
 
-1. Place both files in `/wp-content/plugins/simpliforms/`
+1. Place the `simpliforms/` folder in `/wp-content/plugins/`
 2. Activate via **Plugins** in the WordPress admin
 3. The database table is created automatically on activation
 
@@ -53,25 +62,14 @@ Built for use alongside Gravity Forms: use Gravity Forms for complex, data-drive
 
 ```php
 // functions.php
-require_once get_template_directory() . '/inc/simpliforms.php';
-
-// Optional — only if ACF is active
-if ( class_exists( 'ACF' ) ) {
-    require_once get_template_directory() . '/inc/simpliforms-acf.php';
-}
+require_once get_template_directory() . '/inc/simpliforms/simpliforms.php';
 ```
 
 ### As a plugin dependency (recommended)
 
-If Simpli Forms lives in its own plugin and ACF may or may not be present:
-
 ```php
-// my-plugin.php (main plugin file)
-require_once plugin_dir_path( __FILE__ ) . 'simpliforms.php';
-
-if ( class_exists( 'ACF' ) ) {
-    require_once plugin_dir_path( __FILE__ ) . 'simpliforms-acf.php';
-}
+// my-plugin.php
+require_once plugin_dir_path( __FILE__ ) . 'simpliforms/simpliforms.php';
 
 add_action( 'init', function () {
     if ( class_exists( 'ACF' ) ) {
@@ -79,24 +77,6 @@ add_action( 'init', function () {
     }
 } );
 ```
-
-The `class_exists( 'ACF' )` check covers both the free and Pro versions of ACF.
-
----
-
-## File Structure
-
-```
-theme/
-└── forms/
-    ├── contact.html
-    ├── quote.html
-    └── emails/
-        ├── contact-notification.php
-        └── contact-auto-response.php
-```
-
-The forms and emails directories can live anywhere — the path is configured per field when using the ACF field type, or passed directly when using code.
 
 ---
 
@@ -146,8 +126,6 @@ Simpli Forms automatically injects the WordPress nonce, honeypot field, and AJAX
 > WordPress AJAX requests (`admin-ajax.php`) bootstrap WordPress but never render front-end templates. If `new SimpliForm()` only runs during a normal page load, the form is not registered when the AJAX submission arrives and every submit will fail.
 
 ```php
-// functions.php
-
 add_action( 'init', function () {
 
     $GLOBALS['simpliforms']['contact'] = new SimpliForm( 'contact', [
@@ -177,16 +155,15 @@ echo $GLOBALS['simpliforms']['contact']->render();
 
 ## Approach 2 — ACF Field Type
 
-Best when clients or content editors need to configure forms, choose templates, or write email content without touching code.
-
-Requires ACF or ACF Pro to be installed and active.
+Requires ACF or ACF Pro. Best for client sites where forms need to be configured without code.
 
 ### 1. Load the ACF field file
 
+The file is included automatically by the main plugin if ACF is active. When using as a theme include:
+
 ```php
-// functions.php or your plugin's main file
 if ( class_exists( 'ACF' ) ) {
-    require_once plugin_dir_path( __FILE__ ) . 'simpliforms-acf.php';
+    require_once get_template_directory() . '/inc/simpliforms/acf-field.php';
 }
 ```
 
@@ -200,25 +177,23 @@ add_action( 'init', function () {
 } );
 ```
 
-`simpliforms_acf_autoregister()` scans all published pages and posts for Simpli Form fields and registers them automatically. On most sites this is the right choice.
+`simpliforms_acf_autoregister()` scans all published pages and posts for Simpli Form fields and registers them automatically.
 
-If you prefer to register only a specific post or options page:
+For specific posts or an options page:
 
 ```php
 add_action( 'init', function () {
-    // From a specific page ID
-    $value = get_field( 'contact_form', 42 );
+    $value = get_field( 'contact_form', 42 );          // post ID
     if ( $value ) simpliforms_register_from_acf( $value );
 
-    // From an ACF options page
-    $value = get_field( 'contact_form', 'options' );
+    $value = get_field( 'contact_form', 'options' );   // ACF options page
     if ( $value ) simpliforms_register_from_acf( $value );
 } );
 ```
 
 ### 3. Add the field in ACF
 
-In the ACF field group editor, add a field of type **Simpli Form**. In the field settings, configure:
+Add a field of type **Simpli Form** in the ACF field group editor. Configure:
 
 | Setting | Description | Example |
 |---|---|---|
@@ -227,30 +202,19 @@ In the ACF field group editor, add a field of type **Simpli Form**. In the field
 
 ### 4. Configure the form in the backend
 
-On any post or page edit screen the field renders four sections:
+Four sections appear on the post/page edit screen:
 
-**General**
-- Form Template — dropdown populated from your forms directory (`.html` files)
-- Form ID — auto-filled from the template filename, can be overridden
-- Success / Error messages
-- Log submissions toggle
+**General** — Form Template, Form ID, Success/Error messages, Log submissions toggle
 
-**Notification Email**
-- To, From Name, From Email, Subject (supports `{{tokens}}`), Reply-To Field
-- Template mode: **Default** (auto-generated table), **PHP File** (select from emails directory), or **Visual Editor** (WYSIWYG with `{{token}}` support)
+**Notification Email** — To, From Name, From Email, Subject (supports `{{tokens}}`), Reply-To Field, Template mode (Default / PHP File / Visual Editor)
 
-**Auto-Response**
-- Enable toggle
-- Recipient Field, Subject
-- Template mode: Default, PHP File, or Visual Editor
+**Auto-Response** — Enable toggle, Recipient Field, Subject, Template mode
 
-**Spam & Security**
-- WordPress Nonce, Honeypot, Rate Limit
+**Spam & Security** — WordPress Nonce, Honeypot, Rate Limit
 
 ### 5. Render in your template
 
 ```php
-// If you know the form ID:
 echo $GLOBALS['simpliforms']['contact']->render();
 
 // Or read it dynamically from the field value:
@@ -285,18 +249,18 @@ new SimpliForm( 'form-id', [
         'subject'        => 'New enquiry from {{name}}',  // supports {{tokens}}
         'template'       => get_template_directory() . '/forms/emails/notification.php',
         'inline_html'    => '<p>Hi, {{name}} just submitted...</p>', // alternative to template
-        'reply_to_field' => 'email',         // field name to use as Reply-To header
-        'from_name'      => 'My Site',       // defaults to get_bloginfo('name')
-        'from_email'     => 'noreply@yourdomain.com.au',  // defaults to admin_email
+        'reply_to_field' => 'email',           // field name to use as Reply-To header
+        'from_name'      => 'My Site',         // defaults to get_bloginfo('name')
+        'from_email'     => 'noreply@yourdomain.com.au', // defaults to admin_email
     ],
 
     // Auto-response email sent to the person who submitted
     'auto_response' => [
         'enabled'     => true,
-        'to_field'    => 'email',            // which field holds the recipient address
+        'to_field'    => 'email',              // which field holds the recipient address
         'subject'     => 'Thanks, {{name}}!',
         'template'    => get_template_directory() . '/forms/emails/auto-response.php',
-        'inline_html' => '<p>Thanks {{name}}, we\'ll be in touch.</p>', // alternative to template
+        'inline_html' => '<p>Thanks {{name}}, we\'ll be in touch.</p>',
     ],
 
     // Spam protection — all layers enabled by default
@@ -306,8 +270,7 @@ new SimpliForm( 'form-id', [
         'rate_limit' => 5,     // max submissions per hour per IP; 0 to disable
     ],
 
-    // Custom server-side validation
-    // Return true to allow, or WP_Error to reject with a visible message
+    // Custom server-side validation — return true to allow, WP_Error to reject
     'before_submit' => function ( array $fields ) {
         if ( strlen( $fields['message'] ?? '' ) < 10 ) {
             return new WP_Error( 'validation', 'Please enter a longer message.' );
@@ -324,57 +287,173 @@ new SimpliForm( 'form-id', [
 ] );
 ```
 
-For the `email` and `auto_response` blocks, `template` (PHP file path), `inline_html` (raw HTML string), and the default auto-generated table are mutually exclusive. `template` takes priority, then `inline_html`, then the default fallback.
+---
 
-### Multiple forms
+## Hooks & Filters Reference
+
+Simpli Forms exposes a complete set of WordPress hooks so you can extend or integrate without modifying plugin files.
+
+### Filters
+
+#### `simpliforms_form_config`
+Modify a form's fully-merged config before it is stored. Runs once at instantiation.
 
 ```php
-add_action( 'init', function () {
-
-    $GLOBALS['simpliforms']['contact'] = new SimpliForm( 'contact', [
-        'template' => get_template_directory() . '/forms/contact.html',
-        'email'    => [ 'to' => 'hello@yourdomain.com.au' ],
-    ] );
-
-    $GLOBALS['simpliforms']['quote'] = new SimpliForm( 'quote-request', [
-        'template' => get_template_directory() . '/forms/quote.html',
-        'email'    => [ 'to' => 'quotes@yourdomain.com.au' ],
-    ] );
-
-} );
+add_filter( 'simpliforms_form_config', function ( array $config, string $form_id ): array {
+    if ( $form_id === 'contact' ) {
+        $config['spam']['rate_limit'] = 10;
+    }
+    return $config;
+}, 10, 2 );
 ```
 
-The form ID is used as the AJAX routing key, the database identifier, and the admin tab label. Use a short descriptive slug with no spaces.
+#### `simpliforms_render`
+Filter the final rendered HTML wrapper before it is returned to the template.
+
+```php
+add_filter( 'simpliforms_render', function ( string $html, string $form_id ): string {
+    return '<div class="my-form-outer">' . $html . '</div>';
+}, 10, 2 );
+```
+
+#### `simpliforms_collected_fields`
+Modify, add, or remove submitted fields after sanitisation but before validation and emails.
+
+```php
+add_filter( 'simpliforms_collected_fields', function ( array $fields, string $form_id ): array {
+    // Combine first/last name into a single field
+    if ( isset( $fields['first_name'], $fields['last_name'] ) ) {
+        $fields['name'] = $fields['first_name'] . ' ' . $fields['last_name'];
+    }
+    return $fields;
+}, 10, 2 );
+```
+
+#### `simpliforms_is_spam`
+Inject a custom spam check. Return `true` to silently discard the submission.
+
+```php
+add_filter( 'simpliforms_is_spam', function ( bool $is_spam, array $fields, string $form_id ): bool {
+    // Reject if message contains a known spam phrase
+    if ( str_contains( $fields['message'] ?? '', 'buy cheap' ) ) {
+        return true;
+    }
+    return $is_spam;
+}, 10, 3 );
+```
+
+#### `simpliforms_notification_subject` / `simpliforms_notification_body` / `simpliforms_notification_headers`
+Modify the outbound notification email.
+
+```php
+add_filter( 'simpliforms_notification_subject', function ( string $subject, string $form_id, array $fields ): string {
+    return '[' . get_bloginfo( 'name' ) . '] ' . $subject;
+}, 10, 3 );
+
+add_filter( 'simpliforms_notification_headers', function ( array $headers, string $form_id, array $fields ): array {
+    $headers[] = 'Bcc: archive@mysite.com.au';
+    return $headers;
+}, 10, 3 );
+```
+
+#### `simpliforms_auto_response_subject` / `simpliforms_auto_response_body` / `simpliforms_auto_response_headers`
+Same signature as above, but applied to the auto-response email.
+
+#### `simpliforms_admin_per_page`
+Override the number of submissions shown per page in the admin (default `20`).
+
+```php
+add_filter( 'simpliforms_admin_per_page', fn() => 50 );
+```
+
+#### `simpliforms_admin_row_actions`
+Add or remove row action links on the submissions list table.
+
+```php
+add_filter( 'simpliforms_admin_row_actions', function ( array $actions, array $row ): array {
+    $export_url = admin_url( 'admin.php?page=simpliforms&sf_export=' . $row['id'] );
+    $actions['export'] = '<a href="' . esc_url( $export_url ) . '">Export</a>';
+    return $actions;
+}, 10, 2 );
+```
+
+---
+
+### Actions
+
+#### `simpliforms_form_registered`
+Fires immediately after a new `SimpliForm` instance is added to the registry.
+
+```php
+add_action( 'simpliforms_form_registered', function ( string $form_id, SimpliForm $instance ) {
+    error_log( "SimpliForm registered: {$form_id}" );
+}, 10, 2 );
+```
+
+#### `simpliforms_before_submit`
+Fires after all built-in spam checks pass, before field collection. You can call `wp_send_json_error()` here to halt processing.
+
+```php
+add_action( 'simpliforms_before_submit', function ( string $form_id, array $raw_post ) {
+    // Log all raw POST data before it's processed
+}, 10, 2 );
+```
+
+#### `simpliforms_submission_saved`
+Fires after the submission is written to the database.
+
+```php
+add_action( 'simpliforms_submission_saved', function ( int $submission_id, string $form_id, array $fields ) {
+    // Trigger a webhook, update a CPT, etc.
+}, 10, 3 );
+```
+
+#### `simpliforms_notification_sent` / `simpliforms_auto_response_sent`
+Fires after the respective email has been dispatched via `wp_mail()`.
+
+```php
+add_action( 'simpliforms_notification_sent', function ( string $form_id, array $fields ) {
+    // Log that the notification was sent
+}, 10, 2 );
+```
+
+#### `simpliforms_after_submit`
+Fires at the very end of a successful submission, after all callbacks and emails. The complement to the `after_submit` config callback — useful when you don't control the form config directly.
+
+```php
+add_action( 'simpliforms_after_submit', function ( string $form_id, array $fields, int $submission_id ) {
+    if ( $form_id === 'contact' ) {
+        my_crm_sync( $fields, $submission_id );
+    }
+}, 10, 3 );
+```
+
+#### `simpliforms_admin_before_single` / `simpliforms_admin_after_single`
+Fires before/after the single-submission detail card is rendered.
+
+```php
+add_action( 'simpliforms_admin_after_single', function ( array $row ) {
+    echo '<div class="my-custom-panel">...</div>';
+} );
+```
 
 ---
 
 ## Email Templates
 
-If no template is provided, Simpli Forms sends a clean HTML table email automatically. There are three ways to provide a custom template, in order of priority:
+Three ways to provide a custom email body, in order of priority:
 
 **1. PHP file** — full control, variables available in scope:
 
 | Variable | Type | Description |
 |---|---|---|
-| `$fields` | `array` | All submitted values, keyed by field `name` attribute |
-| `$form_fields` | `array` | Alias of `$fields`, useful for loops alongside extracted vars |
+| `$fields` | `array` | All submitted values, keyed by field `name` |
+| `$form_fields` | `array` | Alias of `$fields`, useful alongside extracted vars |
 | `$form_id` | `string` | The form slug, e.g. `contact` |
 | `$form_label` | `string` | Prettified label, e.g. `Contact` |
-| `$name`, `$email`, … | `string` | Each field extracted as its own variable, already `esc_html`'d |
+| `$name`, `$email`, … | `string` | Each field extracted as its own variable (already `esc_html`'d) |
 
-```php
-<!-- forms/emails/contact-notification.php -->
-<!DOCTYPE html>
-<html>
-<body>
-    <h2>New enquiry from <?php echo $name; ?></h2>
-    <p><strong>Email:</strong> <?php echo $email; ?></p>
-    <p><strong>Message:</strong><br><?php echo nl2br( $message ); ?></p>
-</body>
-</html>
-```
-
-**2. Inline HTML** — set `inline_html` in config, or written via the ACF Visual Editor. Supports `{{token}}` replacement:
+**2. Inline HTML** — set `inline_html` in config, or use the ACF Visual Editor. Supports `{{token}}` replacement:
 
 ```html
 <p>Hi, you have a new message from <strong>{{name}}</strong> ({{email}}).</p>
@@ -383,39 +462,20 @@ If no template is provided, Simpli Forms sends a clean HTML table email automati
 
 **3. Default** — auto-generated HTML table of all submitted fields. No configuration needed.
 
-### Token replacement in subject lines
-
-Both notification and auto-response subject lines support `{{field_name}}` tokens:
-
-```php
-'subject' => 'New enquiry from {{name}} — {{project_type}}',
-```
-
-Tokens are resolved from submitted field values. Unrecognised tokens are replaced with an empty string.
-
 ---
 
 ## Spam Protection
 
-All three layers are enabled by default. Any layer can be disabled individually.
+All three layers are enabled by default.
 
 ### Nonce
-
-A WordPress nonce is injected as a hidden field and verified server-side before any other processing runs. Confirms the request originated from your site within the current session.
+A WordPress nonce is injected and verified server-side before any other processing.
 
 ### Honeypot
-
-A visually hidden input is injected into the form (positioned off-screen, `tabindex="-1"`, `autocomplete="off"`). Legitimate users never see or interact with it. When a bot fills it in, the submission silently returns a success response so the bot has no signal to retry.
+A visually hidden input is injected (off-screen, `tabindex="-1"`, `autocomplete="off"`). When a bot fills it in, the submission silently succeeds so the bot has no signal to retry.
 
 ### Rate limiting
-
-Uses WordPress transients keyed by form ID and hashed client IP. Once a visitor hits the configured limit within a rolling hour window, further submissions are rejected. The counter resets automatically after one hour. Set `rate_limit` to `0` to disable.
-
-```php
-'spam' => [
-    'rate_limit' => 10,
-],
-```
+Uses WordPress transients keyed by form ID and hashed client IP. Resets after one hour. Set `rate_limit` to `0` to disable.
 
 ---
 
@@ -425,10 +485,10 @@ Uses WordPress transients keyed by form ID and hashed client IP. Once a visitor 
 
 ```css
 .simpliforms-wrapper   { /* outer container div */ }
-.simpliforms-response  { /* message element, empty until a submission is made */ }
-.simpliforms-success   { /* added to .simpliforms-response on success */ }
-.simpliforms-error     { /* added to .simpliforms-response on error */ }
-.simpliforms-loading   { /* added to .simpliforms-wrapper while the request is in-flight */ }
+.simpliforms-response  { /* message element */ }
+.simpliforms-success   { /* added on success */ }
+.simpliforms-error     { /* added on error */ }
+.simpliforms-loading   { /* added to wrapper during request */ }
 ```
 
 Example with Tailwind CSS:
@@ -471,69 +531,85 @@ The wrapper element ID is always `simpliforms-{form-id}`, e.g. `simpliforms-cont
 
 ## Admin — Submission Log
 
-After activating the plugin, a **Simpli Forms** entry appears in the WordPress admin sidebar with an unread count bubble.
+After activating, a **Simpli Forms** entry appears in the WordPress admin sidebar with an unread count bubble.
 
 ### Submissions list
 
-- Tabs across the top filter by form ID, each showing total and unread count
-- Unread submissions displayed in bold with a blue "new" badge
+- Tabs filter by form ID, each showing total and unread count
+- Unread submissions displayed in bold with a "New" badge
 - Each row shows a preview of the first three fields, IP address, date, and status
-- Bulk delete via the checkbox column
+- Bulk actions: Mark as read, Mark as unread, Delete
+- Date range filter
 
 ### Single submission view
 
-Clicking **View** opens a full detail page showing every submitted field, the submission date, IP address, and browser user agent. Opening a submission automatically marks it as read.
+Clicking **View** opens a full detail page with every submitted field, date, IP address, and browser user agent. Opening a submission automatically marks it as read.
 
 ### Statuses
 
 | Status | Meaning |
 |---|---|
-| `new` | Received but not yet viewed in the admin |
+| `new` | Received but not yet viewed |
 | `read` | Automatically set when the detail view is opened |
 
 ---
 
 ## Database
 
-Simpli Forms creates one custom table: `{prefix}simpliforms_submissions`.
+One custom table: `{prefix}simpliforms_submissions`
 
 | Column | Type | Description |
 |---|---|---|
 | `id` | `BIGINT UNSIGNED` | Auto-increment primary key |
 | `form_id` | `VARCHAR(100)` | The form slug |
 | `submitted_at` | `DATETIME` | Submission timestamp (site timezone) |
-| `ip_address` | `VARCHAR(45)` | Client IP address (IPv4 or IPv6) |
+| `ip_address` | `VARCHAR(45)` | Client IP (IPv4 or IPv6) |
 | `user_agent` | `TEXT` | Browser user-agent string |
-| `fields` | `LONGTEXT` | All submitted field values as a JSON object |
+| `fields` | `LONGTEXT` | All submitted field values as JSON |
 | `status` | `VARCHAR(20)` | `new` or `read` |
 
-The table is created or updated via `dbDelta` on plugin activation, and re-checked on every `init` if the version option is out of date. Safe to run across updates without risk of data loss.
+Created or updated via `dbDelta` on activation and re-checked on every `init` if the version option is out of date.
+
+---
+
+## Translations
+
+All user-facing strings use the `simpliforms` text domain. Place `.po`/`.mo` files in the `languages/` directory.
+
+Frontend JavaScript strings are localised via `wp_localize_script` and available under `SimpliForms.i18n`. Admin JavaScript strings are available under `SimpliFormsAdmin.i18n`.
+
+To generate a `.pot` file:
+
+```bash
+wp i18n make-pot . languages/simpliforms.pot
+```
 
 ---
 
 ## Version History
 
+### 1.1.0
+- **New:** All user-facing strings are now translatable (`simpliforms` text domain, `Text Domain` header corrected from `translate`)
+- **New:** Frontend JS strings localised via `wp_localize_script` (`SimpliForms.i18n`)
+- **New:** Admin JS strings localised via `SimpliFormsAdmin.i18n`
+- **New:** Filters — `simpliforms_form_config`, `simpliforms_render`, `simpliforms_collected_fields`, `simpliforms_is_spam`, `simpliforms_notification_subject/body/headers`, `simpliforms_auto_response_subject/body/headers`, `simpliforms_admin_per_page`, `simpliforms_admin_row_actions`
+- **New:** Actions — `simpliforms_form_registered`, `simpliforms_before_submit`, `simpliforms_submission_saved`, `simpliforms_notification_sent`, `simpliforms_auto_response_sent`, `simpliforms_after_submit`, `simpliforms_admin_before_single`, `simpliforms_admin_after_single`
+- **New:** Plugin split into `includes/class-db.php`, `includes/class-form.php`, `includes/class-admin.php` — `simpliforms.php` is now the bootstrap only
+- **New:** `SIMPLIFORMS_VERSION`, `SIMPLIFORMS_DIR`, `SIMPLIFORMS_FILE` constants defined in bootstrap
+- **New:** `languages/` directory added
+
 ### 1.0.3
-- **Fix:** — Errant definition broke the updater
+- **Fix:** Errant definition broke the updater
 
 ### 1.0.2
-- **New:** `simpliforms-acf.php` — ACF field type for full backend configuration of forms, email settings, and email templates (including a WYSIWYG visual editor)
+- **New:** `acf-field.php` — ACF field type for full backend configuration
 - **New:** `simpliforms_register_from_acf()` — converts an ACF field value into a registered `SimpliForm` instance
-- **New:** `simpliforms_acf_autoregister()` — scans all published pages and posts and registers any Simpli Form fields found
-- **New:** `inline_html` option on `email` and `auto_response` config blocks — raw HTML email body with `{{token}}` support, used by the ACF Visual Editor mode
+- **New:** `simpliforms_acf_autoregister()` — scans all published pages/posts and registers any Simpli Form fields found
+- **New:** `inline_html` option on `email` and `auto_response` config blocks
 
 ### 1.0.1
-- **Fix:** Forms must be registered inside `add_action('init', ...)` and stored in `$GLOBALS`. Instantiating in a page template meant the form was never registered during AJAX requests, causing all submissions to fail.
-- **Fix:** The fetch error handler now always parses the JSON response body regardless of HTTP status code, so server-side error messages are shown to the user correctly instead of a generic network error.
+- **Fix:** Forms must be registered inside `add_action('init', ...)` and stored in `$GLOBALS`
+- **Fix:** Fetch handler now parses JSON response regardless of HTTP status code
 
 ### 1.0.0
 Initial release.
-
-- `SimpliForm` — form rendering and AJAX processing
-- `SimpliForm_DB` — custom submissions table
-- `SimpliForm_Admin` — WP admin submissions UI
-- Nonce, honeypot, and rate-limit spam protection
-- PHP email templates with variable extraction
-- `{{token}}` subject line replacement
-- `before_submit` / `after_submit` callbacks
-- `simpliforms:success` / `simpliforms:error` JS events
