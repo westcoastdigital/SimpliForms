@@ -31,6 +31,8 @@ Built for use alongside Gravity Forms: use Gravity Forms for complex, data-drive
 - WordPress 6.0+
 - PHP 8.0+
 - ACF or ACF Pro (optional — only required for the ACF field type)
+- Meta Box 5+ free or Pro (optional — only required for the Meta Box field type)
+- MB Builder add-on (optional — only required for the drag-and-drop builder UI)
 
 ---
 
@@ -41,6 +43,7 @@ simpliforms/
 ├── simpliforms.php          # Plugin header, constants, bootstrap
 ├── github-updater.php       # GitHub auto-updater
 ├── acf-field.php            # ACF field type (optional, requires ACF or ACF Pro)
+├── metabox-field.php        # Meta Box field type (optional, requires Meta Box 5+)
 ├── includes/
 │   ├── class-db.php         # SimpliForm_DB — database layer
 │   ├── class-form.php       # SimpliForm — form registration, rendering, processing
@@ -220,6 +223,111 @@ echo $GLOBALS['simpliforms']['contact']->render();
 // Or read it dynamically from the field value:
 $config = get_field( 'contact_form' );
 if ( $config ) {
+    echo $GLOBALS['simpliforms'][ $config['form_id'] ]->render();
+}
+```
+
+---
+
+## Approach 3 — Meta Box Field Type
+
+Requires [Meta Box](https://metabox.io) 5+ (free or Pro). Best for sites already using Meta Box for custom fields, or when you prefer Meta Box's code-based field registration over ACF's UI.
+
+### 1. Register a meta box with the field
+
+**Option A — Code** (always works, no add-ons required):
+
+```php
+// functions.php or your plugin
+
+add_filter( 'rwmb_meta_boxes', function ( array $meta_boxes ): array {
+
+    $meta_boxes[] = [
+        'title'      => 'Contact Form',
+        'post_types' => [ 'page' ],
+        'fields'     => [
+            [
+                'type'       => 'simpliforms',        // the custom field type
+                'id'         => 'contact_form',        // meta key
+                'name'       => 'Contact Form',
+                'forms_dir'  => 'forms',               // relative to active theme root
+                'emails_dir' => 'forms/emails',        // relative to active theme root
+            ],
+        ],
+    ];
+
+    return $meta_boxes;
+} );
+```
+
+`forms_dir` and `emails_dir` are the only Meta Box-specific attributes. All form configuration (email settings, spam options, etc.) is done through the field UI on the post edit screen — identical to the ACF version.
+
+**Option B — MB Builder GUI** (requires [MB Builder](https://metabox.io/plugins/meta-box-builder/) add-on):
+
+The `Simpli Form` field type appears automatically in the MB Builder field picker under the **Advanced** category once the plugin is active.
+
+Drag the field into your field group. Two settings are exposed in the builder:
+
+| Setting | Description | Default |
+|---|---|---|
+| **Forms Directory** | Path to HTML templates, relative to theme root | `forms` |
+| **Emails Directory** | Path to PHP email templates, relative to theme root | `forms/emails` |
+
+All other form configuration (notification email, auto-response, spam protection, etc.) is done through the rendered field UI on the post/page edit screen — MB Builder only controls the field's structural definition.
+
+### 2. Auto-register on init
+
+```php
+add_action( 'init', function () {
+    simpliforms_metabox_autoregister();
+} );
+```
+
+`simpliforms_metabox_autoregister()` scans all published pages and posts for saved Simpli Form field values and registers them automatically. Called automatically by the plugin bootstrap if Meta Box is active.
+
+For better performance on large sites, pass explicit field IDs instead of scanning all post meta:
+
+```php
+add_action( 'init', function () {
+    simpliforms_metabox_autoregister( [ 'contact_form', 'quote_form' ] );
+} );
+```
+
+For manual registration from a specific post or an options page (requires [MB Settings Page](https://metabox.io/plugins/mb-settings-page/)):
+
+```php
+add_action( 'init', function () {
+    // From a specific post ID
+    $value = rwmb_meta( 'contact_form', [], 42 );
+    if ( $value ) simpliforms_register_from_metabox( $value );
+
+    // From an MB Settings Page
+    $value = rwmb_meta( 'contact_form', [ 'object_type' => 'setting' ], 'my-settings-page' );
+    if ( $value ) simpliforms_register_from_metabox( $value );
+} );
+```
+
+### 3. Render in your template
+
+The simplest approach — `format_value()` handles registration and rendering automatically:
+
+```php
+// Echo directly
+rwmb_the_value( 'contact_form' );
+
+// Or capture the HTML
+$html = rwmb_get_value( 'contact_form' );
+```
+
+If you need more control, you can also call `render()` manually:
+
+```php
+// If you know the form ID:
+echo $GLOBALS['simpliforms']['contact']->render();
+
+// Or read it dynamically from the field value:
+$config = rwmb_meta( 'contact_form' );
+if ( ! empty( $config['form_id'] ) ) {
     echo $GLOBALS['simpliforms'][ $config['form_id'] ]->render();
 }
 ```
@@ -587,6 +695,18 @@ wp i18n make-pot . languages/simpliforms.pot
 ---
 
 ## Version History
+
+### 1.1.3
+- **Fix:** `RWMB_SimpliForms_Field::format_value()` added — `rwmb_the_value()` and `rwmb_get_value()` now output rendered form HTML directly instead of triggering an array-to-string conversion error
+
+### 1.1.2
+- **New:** MB Builder support — `Simpli Form` now appears in the MB Builder field picker under the **Advanced** category via `mbb_field_types` filter; `forms_dir` and `emails_dir` are editable directly in the drag-and-drop builder UI
+
+### 1.1.1
+- **New:** `metabox-field.php` — Meta Box 5+ field type providing the same configuration UI as the ACF version
+- **New:** `simpliforms_register_from_metabox()` — converts a Meta Box field value into a registered `SimpliForm` instance
+- **New:** `simpliforms_metabox_autoregister()` — scans published pages/posts for Simpli Form Meta Box fields and registers them; accepts optional `$field_ids` array for targeted (faster) scanning on large sites
+- **New:** Meta Box integration block in `simpliforms.php` — auto-loads and auto-registers when Meta Box is active
 
 ### 1.1.0
 - **New:** All user-facing strings are now translatable (`simpliforms` text domain, `Text Domain` header corrected from `translate`)

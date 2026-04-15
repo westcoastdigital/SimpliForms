@@ -1,9 +1,10 @@
 <?php
+
 /**
  * Plugin Name: Simpli Forms
  * Plugin URI:  https://simpliweb.com.au
  * Description: Drop-in HTML form handler for WordPress. Logging, email templates, spam protection — zero backend form building required.
- * Version:     1.1.0
+ * Version:     1.1.3
  * Author:      SimpliWeb
  * Author URI:  https://simpliweb.com.au
  * License:     GPL v2 or later
@@ -91,15 +92,15 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-if ( ! defined( 'ABSPATH' ) ) {
-	exit;
+if (! defined('ABSPATH')) {
+    exit;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-define( 'SIMPLIFORMS_VERSION', '1.1.0' );
-define( 'SIMPLIFORMS_DIR',     plugin_dir_path( __FILE__ ) );
-define( 'SIMPLIFORMS_FILE',    __FILE__ );
+define('SIMPLIFORMS_VERSION', '1.1.3');
+define('SIMPLIFORMS_DIR',     plugin_dir_path(__FILE__));
+define('SIMPLIFORMS_FILE',    __FILE__);
 
 // ─── Includes ─────────────────────────────────────────────────────────────────
 
@@ -111,28 +112,28 @@ require_once SIMPLIFORMS_DIR . 'includes/class-admin.php';
 
 require_once SIMPLIFORMS_DIR . 'github-updater.php';
 
-if ( class_exists( 'SimpliWeb_GitHub_Updater' ) ) {
-	$updater = new SimpliWeb_GitHub_Updater( __FILE__ );
-	$updater->set_username( 'westcoastdigital' );
-	$updater->set_repository( 'SimpliForms' );
+if (class_exists('SimpliWeb_GitHub_Updater')) {
+    $updater = new SimpliWeb_GitHub_Updater(__FILE__);
+    $updater->set_username('westcoastdigital');
+    $updater->set_repository('SimpliForms');
 
-	// For private repos, uncomment and add your token:
-	// if ( defined( 'GITHUB_ACCESS_TOKEN' ) ) {
-	//     $updater->authorize( GITHUB_ACCESS_TOKEN );
-	// }
+    // For private repos, uncomment and add your token:
+    // if ( defined( 'GITHUB_ACCESS_TOKEN' ) ) {
+    //     $updater->authorize( GITHUB_ACCESS_TOKEN );
+    // }
 
-	$updater->initialize();
+    $updater->initialize();
 }
 
 // ─── Text Domain ──────────────────────────────────────────────────────────────
 
-add_action( 'init', function () {
-	load_plugin_textdomain(
-		'simpliforms',
-		false,
-		dirname( plugin_basename( __FILE__ ) ) . '/languages'
-	);
-}, 1 );
+add_action('init', function () {
+    load_plugin_textdomain(
+        'simpliforms',
+        false,
+        dirname(plugin_basename(__FILE__)) . '/languages'
+    );
+}, 1);
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
@@ -141,42 +142,42 @@ add_action( 'init', function () {
  * If using as a theme include (not a plugin), this hook won't fire —
  * the init hook below handles it instead.
  */
-if ( function_exists( 'register_activation_hook' ) ) {
-	register_activation_hook( __FILE__, [ 'SimpliForm_DB', 'install' ] );
+if (function_exists('register_activation_hook')) {
+    register_activation_hook(__FILE__, ['SimpliForm_DB', 'install']);
 }
 
-add_action( 'init', function () {
-	// Create/update table if needed (idempotent).
-	if ( get_option( SimpliForm_DB::OPTION ) !== SimpliForm_DB::VERSION ) {
-		SimpliForm_DB::install();
-	}
-} );
+add_action('init', function () {
+    // Create/update table if needed (idempotent).
+    if (get_option(SimpliForm_DB::OPTION) !== SimpliForm_DB::VERSION) {
+        SimpliForm_DB::install();
+    }
+});
 
 // ─── AJAX Handlers ────────────────────────────────────────────────────────────
 
 // Registered late so theme/plugin forms have time to register themselves.
-add_action( 'wp_ajax_simpliforms_submit',        [ 'SimpliForm', 'handle_ajax' ] );
-add_action( 'wp_ajax_nopriv_simpliforms_submit', [ 'SimpliForm', 'handle_ajax' ] );
+add_action('wp_ajax_simpliforms_submit',        ['SimpliForm', 'handle_ajax']);
+add_action('wp_ajax_nopriv_simpliforms_submit', ['SimpliForm', 'handle_ajax']);
 
 // ─── Frontend Script ──────────────────────────────────────────────────────────
 
-add_action( 'wp_enqueue_scripts', function () {
-	wp_register_script( 'simpliforms', false, [], SIMPLIFORMS_VERSION, true );
-	wp_enqueue_script( 'simpliforms' );
+add_action('wp_enqueue_scripts', function () {
+    wp_register_script('simpliforms', false, [], SIMPLIFORMS_VERSION, true);
+    wp_enqueue_script('simpliforms');
 
-	wp_localize_script( 'simpliforms', 'SimpliForms', [
-		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-		'i18n'    => [
-			'sending'        => __( 'Sending\u2026', 'simpliforms' ),
-			'genericError'   => __( 'An error occurred. Please try again.', 'simpliforms' ),
-			'networkError'   => __( 'Network error. Please check your connection and try again.', 'simpliforms' ),
-			/* translators: %s = HTTP status code */
-			'unexpectedResp' => __( 'Server returned an unexpected response (HTTP %s). Check that the form is registered in an init hook.', 'simpliforms' ),
-		],
-	] );
+    wp_localize_script('simpliforms', 'SimpliForms', [
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        'i18n'    => [
+            'sending'        => __('Sending\u2026', 'simpliforms'),
+            'genericError'   => __('An error occurred. Please try again.', 'simpliforms'),
+            'networkError'   => __('Network error. Please check your connection and try again.', 'simpliforms'),
+            /* translators: %s = HTTP status code */
+            'unexpectedResp' => __('Server returned an unexpected response (HTTP %s). Check that the form is registered in an init hook.', 'simpliforms'),
+        ],
+    ]);
 
-	wp_add_inline_script( 'simpliforms', simpliforms_frontend_js() );
-} );
+    wp_add_inline_script('simpliforms', simpliforms_frontend_js());
+});
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
@@ -184,16 +185,29 @@ SimpliForm_Admin::init();
 
 // ─── ACF Integration ──────────────────────────────────────────────────────────
 
-if ( class_exists( 'ACF' ) ) {
-	require_once SIMPLIFORMS_DIR . 'acf-field.php';
+if (class_exists('ACF')) {
+    require_once SIMPLIFORMS_DIR . 'acf-field.php';
 }
 
-add_action( 'init', function () {
-	if ( ! class_exists( 'ACF' ) ) {
-		return;
-	}
-	simpliforms_acf_autoregister();
-} );
+add_action('init', function () {
+    if (! class_exists('ACF')) {
+        return;
+    }
+    simpliforms_acf_autoregister();
+});
+
+// ─── Meta Box Integration ─────────────────────────────────────────────────────
+
+if (function_exists('rwmb_meta')) {
+    require_once SIMPLIFORMS_DIR . 'metabox-field.php';
+}
+
+add_action('init', function () {
+    if (! function_exists('rwmb_meta')) {
+        return;
+    }
+    simpliforms_metabox_autoregister();
+});
 
 // ─── Frontend JS ──────────────────────────────────────────────────────────────
 
@@ -201,8 +215,9 @@ add_action( 'init', function () {
  * Returns the inline frontend JavaScript.
  * Strings are supplied via the SimpliForms.i18n object localised above.
  */
-function simpliforms_frontend_js(): string {
-	return <<<'JS'
+function simpliforms_frontend_js(): string
+{
+    return <<<'JS'
 (function () {
     'use strict';
 
